@@ -1,3 +1,4 @@
+from AddressBook import *
 
 #region Decorators 
 
@@ -6,7 +7,20 @@ def input_error(func):
         try:
             return func(*args, **kwargs)
         except ValueError:
-            return "Give me name and phone please."
+           return "Give me name and phone please."
+        except Exception as e:
+           return str(e)
+
+    return inner
+
+def input_error_add_birthday(func):
+    def inner(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ValueError:
+           return "Give me name and birthday please."
+        except Exception as e:
+           return str(e)
 
     return inner
 
@@ -18,6 +32,8 @@ def input_error_show_contact(func):
             return "Give me name please."
         except KeyError:
             return "Contact was not found."
+        except Exception as e:
+           return str(e)
 
     return inner
 
@@ -40,8 +56,10 @@ def parse_input(user_input: str) -> (str, [str]):
     return cmd, *args
 
 
+#region contacts 
+
 @input_error
-def add_contact(args: [str], contacts: {}) -> str:
+def add_contact(args: [str], contacts: AddressBook) -> str:
     """
         Add contact to contact dictionary
 
@@ -55,32 +73,44 @@ def add_contact(args: [str], contacts: {}) -> str:
     
     name, phone = args
     
-    contacts[name] = phone
+    record = contacts.find(name)
+    
+    if not record:
+        record = Record(name)
+        contacts.add_record(record)
+    
+    record.add_phone(phone)
     
     return "Contact added."
 
 
 @input_error
-def update_contact(args: [str], contacts: {}) -> str:
+def update_contact(args: [str], contacts: AddressBook) -> str:
     """
         Update contact to contact dictionary
 
         Args:
-            args ([str]): contact parameter (expected format: name phone)
+            args ([str]): contact parameter (expected format: name phone_old phone_new)
             contacts (_type_): contacts catalog
 
         Returns:
             string: message of contact updated
     """
     
-    name, phone = args
+    name, phone_old, phone_new = args
     
-    contacts[name] = phone
+    record = contacts.find(name)
+    
+    if not record:
+        raise Exception(f"Cannot find contact with name = '{name}'")
+    
+    record.remove_phone(phone_old)
+    record.add_phone(phone_new)
     
     return "Contact updated."
 
 @input_error_show_contact
-def show_contact(args: [str], contacts: {}) -> str:
+def show_contact(args: [str], contacts: AddressBook) -> str:
     """
         Find and show contact in contact dictionary
 
@@ -94,9 +124,15 @@ def show_contact(args: [str], contacts: {}) -> str:
 
     name = args[0]
     
-    return f"{contacts[name]}"
+    record = contacts.find(name)
+    
+    if not record:
+        raise Exception(f"Cannot find contact with name = '{name}'")
+    
+    return f"{' '.join(record.phones)}"
 
-def showall_contact(contacts: {}) -> str:
+
+def showall_contact(contacts: AddressBook) -> str:
     """
         Return table with all contacts
 
@@ -106,18 +142,102 @@ def showall_contact(contacts: {}) -> str:
         Returns:
             str: table with contact information sorted by name
     """
-    message = "\n"
     
-    len_format = str(min(max([ max(len(key), len(value)) for key, value in (contacts.items()) ] ), 30))
+    message = "\n"
     
     message += ("| {0:-^30} | {0:-^30} |\n").format("-")
     message += ("| {0:^30} | {1:^30} |\n").format("Name", "Phone")
     message += ("| {0:-^30} | {0:-^30} |\n").format("-")
-    for name, contact in sorted(contacts.items()):
-        message += ("| {0:<30} | {1:^30} |\n").format(name, contact)
+    for name, contact in contacts.data.items():
+        message += ("| {0:<30} | {1:^30} |\n").format(name, ', '.join([x.value for x in contact.phones]))
     message += ("| {0:-^30} | {0:-^30} |\n").format("-")
     
     return message
+
+#endregion
+
+#region birthday
+
+@input_error_show_contact
+def show_birthday(args: [str], contacts: AddressBook) -> str:
+    """
+        Find and show birthday in contact dictionary
+
+        Args:
+            args ([str]): contact name
+            contacts (_type_): contacts catalog
+
+        Returns:
+            string: contact birthday
+    """
+
+    name = args[0]
+    
+    record = contacts.find(name)
+    
+    if not record:
+        raise Exception(f"Cannot find contact with name = '{name}'")
+    
+    return f"{record.birthday.value.strftime('%d.%m.%Y')}"
+
+@input_error_add_birthday
+def add_birthday(args: [str], contacts: AddressBook) -> str:
+    """
+        Add birthday to contact dictionary
+
+        Args:
+            args ([str]): contact parameter (expected format: name birthday)
+            contacts (_type_): contacts catalog
+
+        Returns:
+            string: message of birthday added
+    """
+    
+    name, birthday_str = args
+    
+    try:
+        birthday_datetime = datetime.strptime(birthday_str, '%d.%m.%Y').date()
+    except:
+        raise Exception(f"Cannot parse birthday date. Valid format is DD.MM.YYYY. Value: {birthday_str}")
+    
+    record = contacts.find(name)
+    
+    if not record:
+        raise Exception(f"Cannot find contact with name = '{name}'")
+    
+    record.add_birthday(birthday_datetime)
+    
+    return "Birthday added."
+
+
+def birthdays(args: [str], contacts: AddressBook) -> str:
+    """
+        Show birthdays for week in contact dictionary
+
+        Args:
+            contacts (_type_): contacts catalog
+
+        Returns:
+            string: all birthdays
+    """
+    
+    birthdays = contacts.get_birthdays_per_week()
+    
+    message = ""
+    
+    message += ("| {0:-^30} | {0:-^60} |\n").format("-")
+    message += ("| {0:^30} | {1:^60} |\n").format("Name", "Birthday")
+    message += ("| {0:-^30} | {0:-^60} |\n").format("-")
+    
+    for day, name in birthdays.items():
+        message += ("| {0:<30} | {1:^60} |\n").format(day, ' '.join(name))
+    message += ("| {0:-^30} | {0:-^60} |\n").format("-")
+    
+    return message
+
+#endregion
+
+#region helper
 
 def command_helper(command: str) -> str:
     """
@@ -133,7 +253,7 @@ def command_helper(command: str) -> str:
         "help": ["--help", "h", "-h"],
         "hello": ["hello", "h", "-h"],
         "add {name} {phone}": ["ad", "plus", "create"],
-        "change {name} {phone}": ["change", "update"],
+        "change {name} {old phone} {new phone}": ["change", "update"],
         "phone {name}": ["phone", "show"],
         "all": ["a", "al"],
         "close": ["quit", "close", "q"],
@@ -178,6 +298,7 @@ Could print error in case of missing parameter or invalid action
 
 """
 
+#endregion
 
 def main():
     """
@@ -185,7 +306,7 @@ def main():
         
         Able to add/change/show user contacts (name & phone) and print all contacts
     """
-    contacts = {}
+    contacts = AddressBook()
     
     print("Welcome to the assistant bot!")
     
@@ -215,10 +336,18 @@ def main():
             elif command == "phone":
                 print(show_contact(args, contacts))
                 
+            elif command == "add-birthday":
+                print(add_birthday(args, contacts))
+                
+            elif command == "show-birthday":
+                print(show_birthday(args, contacts))
+                
+            elif command == "birthdays":
+                print(birthdays(args, contacts))
+                
             elif command == "all":
                 print(showall_contact(contacts))
-                
-            
+              
             # invalid command handler
             else:
                 print("Invalid command.")
